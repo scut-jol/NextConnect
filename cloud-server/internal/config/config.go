@@ -1,5 +1,7 @@
 package config
 
+import "os"
+
 type Config struct {
 	ListenAddr string
 	DBPath     string
@@ -8,8 +10,15 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		ListenAddr: ":8080",
-		DBPath:     "./data/nextconnect.db",
-		JWTSecret:  "change-me-in-production",
+		ListenAddr: getEnv("NC_LISTEN_ADDR", ":8080"),
+		DBPath:     getEnv("NC_DB_PATH", "./data/nextconnect.db"),
+		JWTSecret:  getEnv("NC_JWT_SECRET", "change-me-in-production"),
 	}
+}
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

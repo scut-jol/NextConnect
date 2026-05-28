@@ -16,7 +16,7 @@ func main() {
 	}
 	defer database.Close()
 
-	router := api.SetupRouter(database)
+	router := api.SetupRouter(database, cfg.JWTSecret)
 	log.Printf("NextConnect cloud-server starting on %s", cfg.ListenAddr)
 	if err := router.Run(cfg.ListenAddr); err != nil {
 		log.Fatalf("server failed: %v", err)
