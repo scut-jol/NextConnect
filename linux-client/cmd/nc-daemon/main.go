@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/scut-jol/NextConnect/linux-client/internal/daemon"
@@ -15,53 +18,83 @@ const (
 )
 
 func main() {
-	fmt.Println("NextConnect Linux Daemon v0.1.0")
-	fmt.Println("=================================")
+	fmt.Println(`
+╔══════════════════════════════════════════╗
+║        NextConnect Linux Daemon         ║
+║     Secure P2P SSH Tunnel v0.1.0        ║
+╚══════════════════════════════════════════╝
+`)
 
-	d := daemon.New(cloudServerURL)
-
-	// Step 1: Ensure local config directory and keys exist
-	if err := d.EnsureKeys(); err != nil {
-		log.Fatalf("failed to setup keys: %v", err)
+	d, err := daemon.New(cloudServerURL)
+	if err != nil {
+		log.Fatalf("FATAL: %v", err)
 	}
-	fmt.Println("[OK] Machine keys ready")
 
-	// Step 2: Register with cloud control plane
+	// Step 1: ensure machine keys exist
+	if err := d.EnsureKeys(); err != nil {
+		log.Fatalf("FATAL: failed to setup keys: %v", err)
+	}
+	fmt.Println(" ✓ Machine keys ready")
+
+	// Step 2: register with cloud control plane
 	token, err := d.Register()
 	if err != nil {
-		log.Fatalf("failed to register with cloud: %v", err)
+		log.Fatalf("FATAL: failed to register with cloud: %v", err)
 	}
-	fmt.Printf("[OK] Pairing token: %s\n", token)
+	fmt.Printf(" ✓ Pairing token: %s\n", token)
 
-	// Step 3: Render QR code in terminal
+	// Step 3: render QR code
 	pairURL := fmt.Sprintf("https://nextconnect.com/bind?token=%s", token)
+	fmt.Println("\n ┌─ Scan this QR code with NextConnect App ─────────────┐")
 	if err := d.PrintQRCode(pairURL); err != nil {
-		log.Fatalf("failed to render QR code: %v", err)
+		log.Fatalf("FATAL: failed to render QR code: %v", err)
 	}
-	fmt.Println("\nPlease scan the QR code above with the NextConnect mobile app.")
-	fmt.Println("Pairing token (manual):", token)
+	fmt.Println(" └──────────────────────────────────────────────────────┘")
+	fmt.Printf("\n Or enter token manually: %s\n", token)
+	fmt.Println("\n Waiting for mobile approval... (press Ctrl+C to cancel)")
 
-	// Step 4: Poll until approved
-	fmt.Println("\nWaiting for approval...")
+	// Step 4: poll with graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	pollTicker := time.NewTicker(pollInterval)
+	defer pollTicker.Stop()
+
 	for {
-		status, err := d.Poll(token)
-		if err != nil {
-			log.Printf("poll error: %v, retrying...", err)
-			time.Sleep(pollInterval)
-			continue
+		select {
+		case <-ctx.Done():
+			fmt.Println("\nCancelled by user.")
+			return
+		case <-pollTicker.C:
+			status, err := d.Poll(token)
+			if err != nil {
+				log.Printf("poll error: %v, retrying...", err)
+				continue
+			}
+			switch status {
+			case "approved":
+				fmt.Println("\n ✓ Device approved by mobile! Starting tunnel...")
+				goto APPROVED
+			case "expired":
+				log.Fatalf("FATAL: pairing token expired. Re-run nc-daemon to get a new one.")
+			default:
+				fmt.Print(".")
+			}
 		}
-		if status == "approved" {
-			fmt.Println("\n[OK] Device approved! Starting tunnel...")
-			break
-		}
-		time.Sleep(pollInterval)
 	}
 
-	// Step 5: Start tunnel
-	if err := d.StartTunnel(); err != nil {
-		log.Fatalf("failed to start tunnel: %v", err)
+APPROVED:
+	// Step 5: start tailscale tunnel
+	if err := d.StartTunnel(ctx); err != nil {
+		log.Fatalf("FATAL: failed to start tunnel: %v", err)
 	}
-	fmt.Println("[OK] Secure tunnel established. Your device is now connected.")
+	fmt.Println("\n ✓ Secure tunnel established. P2P network ready!")
+	fmt.Println(" ✓ Your device is now accessible via the NextConnect App.")
+	fmt.Println("\n Press Ctrl+C to stop the daemon.")
 
-	select {}
+	// Block until shutdown signal
+	<-ctx.Done()
+	fmt.Println("\nShutting down NextConnect daemon...")
+	d.StopTunnel()
+	fmt.Println("Goodbye.")
 }

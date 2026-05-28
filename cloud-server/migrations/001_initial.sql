@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS nc_pairing_tokens (
     machine_key VARCHAR(255) NOT NULL,
     node_key VARCHAR(255) NOT NULL DEFAULT '',
     namespace VARCHAR(64) NOT NULL,
-    status VARCHAR(20) DEFAULT 'pending',
+    status VARCHAR(20) DEFAULT 'pending' CHECK(status IN ('pending','approved','expired')),
     expires_at TIMESTAMP NOT NULL
 );
 
@@ -27,3 +27,7 @@ CREATE TABLE IF NOT EXISTS nc_audit_logs (
     virtual_ip VARCHAR(45),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_pairing_tokens_status ON nc_pairing_tokens(status);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON nc_audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON nc_audit_logs(created_at);
