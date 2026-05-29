@@ -1,52 +1,88 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
-	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
-// Claims holds the JWT payload for authenticated users.
-type Claims struct {
-	UserID    int64  `json:"user_id"`
-	Phone     string `json:"phone"`
-	Namespace string `json:"namespace"`
-	jwt.RegisteredClaims
+// RateLimiter provides simple in-memory rate limiting per client IP.
+type RateLimiter struct {
+	mu       sync.Mutex
+	requests map[string]int
+	limit    int
+	window   time.Duration
+	last     time.Time
 }
 
-// AuthMiddleware validates JWT tokens and injects user claims into the context.
-func AuthMiddleware(secret string) gin.HandlerFunc {
+// NewRateLimiter creates a rate limiter allowing [limit] requests per [window].
+func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
+	rl := &RateLimiter{
+		requests: make(map[string]int),
+		limit:    limit,
+		window:   window,
+		last:     time.Now(),
+	}
+	// Background cleanup every 10 windows
+	go func() {
+		for {
+			time.Sleep(window * 10)
+			rl.mu.Lock()
+			rl.requests = make(map[string]int)
+			rl.last = time.Now()
+			rl.mu.Unlock()
+		}
+	}()
+	return rl
+}
+
+func (rl *RateLimiter) Allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	// Reset if window expired
+	if time.Since(rl.last) > rl.window {
+		rl.requests = make(map[string]int)
+		rl.last = time.Now()
+	}
+
+	rl.requests[ip]++
+	return rl.requests[ip] <= rl.limit
+}
+
+// RateLimitMiddleware returns a Gin middleware that rate-limits per client IP.
+func RateLimitMiddleware(limit int, window time.Duration) gin.HandlerFunc {
+	rl := NewRateLimiter(limit, window)
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: "missing authorization header"})
+		ip := c.ClientIP()
+		if !rl.Allow(ip) {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, ErrorResponse{
+				Error: "rate limit exceeded. Try again later.",
+			})
 			return
 		}
+		c.Next()
+	}
+}
 
-		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenStr == authHeader {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: "invalid authorization format, use Bearer <token>"})
-			return
-		}
+// SecurityHeadersMiddleware adds standard security HTTP headers.
+func SecurityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		c.Header("Cache-Control", "no-store")
+		c.Next()
+	}
+}
 
-		claims := &Claims{}
-		token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-			}
-			return []byte(secret), nil
-		})
-		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{Error: "invalid or expired token"})
-			return
-		}
-
-		c.Set("user_id", claims.UserID)
-		c.Set("phone", claims.Phone)
-		c.Set("namespace", claims.Namespace)
+// MaxBodySizeMiddleware limits request body size to prevent abuse.
+func MaxBodySizeMiddleware(maxBytes int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
 		c.Next()
 	}
 }

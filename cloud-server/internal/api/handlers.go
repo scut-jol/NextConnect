@@ -34,7 +34,7 @@ func generatePairingToken() (string, error) {
 	return "NC-" + string(code), nil
 }
 
-func LoginHandler(database *db.Database, jwtSecret string) gin.HandlerFunc {
+func LoginHandler(database *db.Database, jwtSecret string, alog *auditLogger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -50,6 +50,10 @@ func LoginHandler(database *db.Database, jwtSecret string) gin.HandlerFunc {
 				c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to create user"})
 				return
 			}
+		}
+
+		if err := alog.Log(0, user.PhoneNumber, "login", "", "", user.Namespace); err != nil {
+			log.Printf("audit log write failed: %v", err)
 		}
 
 		now := time.Now()
@@ -78,7 +82,7 @@ func LoginHandler(database *db.Database, jwtSecret string) gin.HandlerFunc {
 	}
 }
 
-func RegisterHandler(database *db.Database) gin.HandlerFunc {
+func RegisterHandler(database *db.Database, alog *auditLogger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req RegisterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -102,6 +106,10 @@ func RegisterHandler(database *db.Database) gin.HandlerFunc {
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to store pairing token"})
 			return
+		}
+
+		if err := alog.Log(0, "", "pair/register", req.MachineKey, "", "unassigned"); err != nil {
+			log.Printf("audit log write failed: %v", err)
 		}
 
 		c.JSON(http.StatusOK, RegisterResponse{
@@ -153,7 +161,7 @@ func ConfirmHandler(database *db.Database, alog *auditLogger) gin.HandlerFunc {
 	}
 }
 
-func PollHandler(database *db.Database) gin.HandlerFunc {
+func PollHandler(database *db.Database, alog *auditLogger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.Query("token")
 		if token == "" {
@@ -168,13 +176,39 @@ func PollHandler(database *db.Database) gin.HandlerFunc {
 		}
 
 		if time.Now().After(pt.ExpiresAt) && pt.Status == "pending" {
+			alog.Log(0, "", "pair/poll:expired", pt.MachineKey, "", pt.Namespace)
 			c.JSON(http.StatusOK, PollResponse{Status: "expired"})
 			return
 		}
+
+		alog.Log(0, "", "pair/poll", pt.MachineKey, "", pt.Namespace)
 
 		c.JSON(http.StatusOK, PollResponse{
 			Status:    pt.Status,
 			Namespace: pt.Namespace,
 		})
+	}
+}
+
+func DevicesHandler(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		raw, exists := c.Get("namespace")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "not authenticated"})
+			return
+		}
+		namespace, ok := raw.(string)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "invalid namespace"})
+			return
+		}
+
+		devices, err := database.GetDevicesByNamespace(namespace)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch devices"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"devices": devices})
 	}
 }

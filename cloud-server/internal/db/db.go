@@ -61,12 +61,12 @@ func (d *Database) GetUserByPhone(phone string) (*User, error) {
 }
 
 type PairingToken struct {
-	Token     string    `json:"token"`
-	MachineKey string   `json:"machine_key"`
-	NodeKey   string    `json:"node_key"`
-	Namespace string    `json:"namespace"`
-	Status    string    `json:"status"`
-	ExpiresAt time.Time `json:"expires_at"`
+	Token      string    `json:"token"`
+	MachineKey string    `json:"machine_key"`
+	NodeKey    string    `json:"node_key"`
+	Namespace  string    `json:"namespace"`
+	Status     string    `json:"status"`
+	ExpiresAt  time.Time `json:"expires_at"`
 }
 
 func (d *Database) CreatePairingToken(token, machineKey, nodeKey, namespace string, expiresAt time.Time) error {
@@ -105,6 +105,21 @@ func (d *Database) ApprovePairingToken(token string) error {
 		return fmt.Errorf("no pending token found: %s", token)
 	}
 	return nil
+}
+
+// Device represents a paired Linux machine visible to the user.
+type Device struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	VirtualIP string `json:"virtual_ip"`
+	Online    bool   `json:"online"`
+}
+
+// GetDevicesByNamespace returns devices in the given namespace.
+// TODO: integrate with Headscale API for real device status.
+func (d *Database) GetDevicesByNamespace(namespace string) ([]Device, error) {
+	// In MVP, return empty — will be populated by Headscale integration
+	return []Device{}, nil
 }
 
 func Init(dbPath string) (*Database, error) {
@@ -148,9 +163,14 @@ func (d *Database) migrate() error {
 		action VARCHAR(64) NOT NULL,
 		target_node VARCHAR(255),
 		virtual_ip VARCHAR(45),
+		namespace VARCHAR(64),
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 	`
-	_, err := d.Exec(schema)
-	return err
+	if _, err := d.Exec(schema); err != nil {
+		return err
+	}
+	// Safe re-runnable migration for older schemas
+	d.Exec(`ALTER TABLE nc_audit_logs ADD COLUMN namespace VARCHAR(64)`)
+	return nil
 }
