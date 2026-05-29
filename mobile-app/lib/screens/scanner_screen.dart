@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 
 class NCScannerScreen extends StatefulWidget {
@@ -80,7 +79,7 @@ class _NCScannerScreenState extends State<NCScannerScreen> {
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                       ),
                       inputFormatters: [
-                        UpperCaseTextFormatter(),
+                        _UpperCaseTextFormatter(),
                         FilteringTextInputFormatter.allow(RegExp(r'[A-Z0-9]')),
                         LengthLimitingTextInputFormatter(6),
                       ],
@@ -150,7 +149,7 @@ class _NCScannerScreenState extends State<NCScannerScreen> {
   }
 }
 
-class UpperCaseTextFormatter extends TextInputFormatter {
+class _UpperCaseTextFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
     return TextEditingValue(

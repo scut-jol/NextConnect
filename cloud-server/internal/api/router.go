@@ -10,12 +10,12 @@ type auditLogger struct {
 	*audit.Logger
 }
 
-func (a *auditLogger) log(c *gin.Context, action, target, vip string) {
+func (a *auditLogger) log(c *gin.Context, action, target, vip string) error {
 	userID, _ := c.Get("user_id")
 	phone, _ := c.Get("phone")
 	uid, _ := userID.(int64)
 	p, _ := phone.(string)
-	_ = a.Logger.Log(int(uid), p, action, target, vip)
+	return a.Logger.Log(int(uid), p, action, target, vip)
 }
 
 func SetupRouter(database *db.Database, jwtSecret string) *gin.Engine {

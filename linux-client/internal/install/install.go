@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 )
@@ -36,7 +37,14 @@ WantedBy=multi-user.target
 )
 
 func New() *Installer {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "/root"
+	}
+	curUser, err := user.Current()
+	if err == nil {
+		_ = curUser.Username
+	}
 	return &Installer{
 		BinaryPath: "/usr/local/bin/" + ncBinaryName,
 		ConfigDir:  filepath.Join(home, ".config", "nextconnect"),
@@ -79,11 +87,12 @@ func (inst *Installer) InstallBinary(sourcePath string) error {
 // RegisterSystemdService installs and enables the systemd service unit.
 func (inst *Installer) RegisterSystemdService() error {
 	unitPath := "/etc/systemd/system/" + ncServiceName + ".service"
-	user := os.Getenv("USER")
-	if user == "" {
-		user = "root"
+	curUser, err := user.Current()
+	userName := "root"
+	if err == nil {
+		userName = curUser.Username
 	}
-	unit := fmt.Sprintf(systemdServiceUnit, user)
+	unit := fmt.Sprintf(systemdServiceUnit, userName)
 
 	if err := os.WriteFile(unitPath, []byte(unit), 0644); err != nil {
 		return fmt.Errorf("write systemd unit: %w", err)
@@ -104,7 +113,6 @@ func (inst *Installer) RegisterSystemdService() error {
 
 // RegisterNohupService falls back to nohup + crontab for systems without systemd.
 func (inst *Installer) RegisterNohupService() error {
-	// Create a wrapper script
 	wrapperPath := "/usr/local/bin/nc-daemon-wrapper.sh"
 	wrapper := fmt.Sprintf(`#!/bin/bash
 nohup %s > %s/nc-daemon.log 2>&1 &
@@ -114,10 +122,8 @@ nohup %s > %s/nc-daemon.log 2>&1 &
 		return fmt.Errorf("write wrapper script: %w", err)
 	}
 
-	// Add to crontab for auto-start on boot
 	cronLine := "@reboot " + wrapperPath + "\n"
 
-	// Read existing crontab
 	var existing bytes.Buffer
 	existing.WriteString(cronLine)
 	cmd := exec.Command("crontab", "-l")
@@ -125,7 +131,6 @@ nohup %s > %s/nc-daemon.log 2>&1 &
 		existing.Write(out)
 	}
 
-	// Write merged crontab
 	tmpFile := filepath.Join(os.TempDir(), "nc-crontab")
 	if err := os.WriteFile(tmpFile, existing.Bytes(), 0644); err != nil {
 		return fmt.Errorf("write temp crontab: %w", err)
@@ -136,7 +141,6 @@ nohup %s > %s/nc-daemon.log 2>&1 &
 		return fmt.Errorf("install crontab: %w", err)
 	}
 
-	// Start daemon now
 	return exec.Command("bash", wrapperPath).Run()
 }
 

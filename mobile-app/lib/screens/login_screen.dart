@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
@@ -55,7 +57,7 @@ class _NCLoginScreenState extends State<NCLoginScreen> {
       _apiService.setToken(resp.token);
 
       // Activate local VPN tunnel in background
-      _vpnService.connect(resp.namespace);
+      unawaited(_vpnService.connect(resp.namespace));
 
       if (!mounted) return;
 
@@ -169,10 +171,6 @@ class _NCLoginScreenState extends State<NCLoginScreen> {
           hintText: '手机号',
           hintStyle: TextStyle(color: Colors.grey[600]),
           prefixIcon: Icon(Icons.phone_android, color: Colors.grey[500]),
-          prefix: const Padding(
-            padding: EdgeInsets.only(left: 16),
-            child: Text('+86 ', style: TextStyle(color: Colors.grey, fontSize: 18)),
-          ),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),

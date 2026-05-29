@@ -13,8 +13,6 @@ type Database struct {
 	*sql.DB
 }
 
-// --- User ---
-
 type User struct {
 	ID          int64     `json:"id"`
 	PhoneNumber string    `json:"phone_number"`
@@ -31,7 +29,10 @@ func (d *Database) CreateUser(phone, namespace string) (*User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("get last insert id: %w", err)
+	}
 	return d.GetUserByID(id)
 }
 
@@ -58,8 +59,6 @@ func (d *Database) GetUserByPhone(phone string) (*User, error) {
 	}
 	return u, nil
 }
-
-// --- Pairing Token ---
 
 type PairingToken struct {
 	Token     string    `json:"token"`
@@ -98,14 +97,15 @@ func (d *Database) ApprovePairingToken(token string) error {
 	if err != nil {
 		return fmt.Errorf("approve pairing token: %w", err)
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get rows affected: %w", err)
+	}
 	if n == 0 {
 		return fmt.Errorf("no pending token found: %s", token)
 	}
 	return nil
 }
-
-// --- Init ---
 
 func Init(dbPath string) (*Database, error) {
 	database, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_foreign_keys=on")

@@ -101,9 +101,11 @@ if [ -f "${CERT_DIR}/${DERP_DOMAIN}.crt" ]; then
 elif [[ "$DERP_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     # IP address — generate self-signed cert via openssl
     info "Generating self-signed certificate for IP: ${DERP_DOMAIN}..."
-    openssl req -x509 -newkey rsa:4096 -keyout "${CERT_DIR}/${DERP_DOMAIN}.key" \
+    if ! openssl req -x509 -newkey rsa:4096 -keyout "${CERT_DIR}/${DERP_DOMAIN}.key" \
         -out "${CERT_DIR}/${DERP_DOMAIN}.crt" -days 3650 -nodes \
-        -subj "/CN=${DERP_DOMAIN}" 2>/dev/null
+        -subj "/CN=${DERP_DOMAIN}" 2>/dev/null; then
+        error "OpenSSL certificate generation failed. Install openssl: apt install openssl"
+    fi
     info "Self-signed certificate generated"
 else
     # Domain — try Let's Encrypt via acme.sh or certbot
@@ -187,7 +189,7 @@ info "systemd service 'nextconnect-derper' registered"
 # --------------- Firewall ---------------
 header "Configuring firewall..."
 
-for FW in ufw firewall-cmd iptables; do
+for FW in ufw firewall-cmd; do
     case "$FW" in
         ufw)
             if command -v ufw &>/dev/null; then

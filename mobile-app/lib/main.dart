@@ -12,8 +12,30 @@ void main() async {
   runApp(const NextConnectApp());
 }
 
-class NextConnectApp extends StatelessWidget {
+class NextConnectApp extends StatefulWidget {
   const NextConnectApp({super.key});
+
+  @override
+  State<NextConnectApp> createState() => _NextConnectAppState();
+}
+
+class _NextConnectAppState extends State<NextConnectApp> {
+  ApiService? _apiService;
+
+  @override
+  void initState() {
+    super.initState();
+    _apiService = ApiService();
+    if (authService.token != null) {
+      _apiService!.setToken(authService.token!);
+    }
+  }
+
+  @override
+  void dispose() {
+    _apiService?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,15 +55,9 @@ class NextConnectApp extends StatelessWidget {
           secondary: Color(0xFF00FF41),
         ),
       ),
-      home: authService.isLoggedIn ? _buildHome() : const NCLoginScreen(),
+      home: authService.isLoggedIn && _apiService != null
+          ? NCDeviceListScreen(apiService: _apiService!, authService: authService)
+          : const NCLoginScreen(),
     );
-  }
-
-  Widget _buildHome() {
-    final api = ApiService();
-    if (authService.token != null) {
-      api.setToken(authService.token!);
-    }
-    return NCDeviceListScreen(apiService: api, authService: authService);
   }
 }

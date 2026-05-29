@@ -106,7 +106,10 @@ type pollResponse struct {
 // Register sends the machine keys to the cloud and returns a pairing token.
 func (d *Daemon) Register() (string, error) {
 	body := registerRequest{MachineKey: d.MachineKey, NodeKey: d.NodeKey}
-	data, _ := json.Marshal(body)
+	data, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("marshal register request: %w", err)
+	}
 
 	resp, err := d.httpClient.Post(
 		d.CloudURL+"/api/v1/pair/register",
@@ -174,8 +177,9 @@ func (d *Daemon) PrintQRCode(url string) error {
 // ---- Tunnel Management ----
 
 // StartTunnel launches tailscaled + tailscale up in userspace-networking mode.
-func (d *Daemon) StartTunnel(ctx context.Context) error {
+func (d *Daemon) StartTunnel() error {
 	statePath := filepath.Join(d.ConfigDir, stateFile)
+	ctx := context.Background()
 
 	// First, start tailscaled in userspace networking mode
 	d.tailscaled = exec.CommandContext(ctx, "tailscaled",
@@ -183,8 +187,6 @@ func (d *Daemon) StartTunnel(ctx context.Context) error {
 		"--listen-addr=localhost:1055",
 		"--state="+statePath,
 	)
-	d.tailscaled.Stdout = nil
-	d.tailscaled.Stderr = nil
 	if err := d.tailscaled.Start(); err != nil {
 		return fmt.Errorf("start tailscaled: %w", err)
 	}

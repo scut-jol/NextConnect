@@ -85,7 +85,7 @@ func main() {
 
 APPROVED:
 	// Step 5: start tailscale tunnel
-	if err := d.StartTunnel(ctx); err != nil {
+	if err := d.StartTunnel(); err != nil {
 		log.Fatalf("FATAL: failed to start tunnel: %v", err)
 	}
 	fmt.Println("\n ✓ Secure tunnel established. P2P network ready!")
@@ -95,6 +95,9 @@ APPROVED:
 	// Block until shutdown signal
 	<-ctx.Done()
 	fmt.Println("\nShutting down NextConnect daemon...")
+	// StopTunnel kills tailscaled. The subprocess might already be stopped
+	// if the signal propagated through exec.CommandContext, but Kill() on
+	// an exited process is safe and returns an error we can discard.
 	d.StopTunnel()
 	fmt.Println("Goodbye.")
 }

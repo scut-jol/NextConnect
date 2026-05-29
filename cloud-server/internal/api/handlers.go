@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/rand"
 	"fmt"
+	"log"
 	"math/big"
 	"net/http"
 	"time"
@@ -15,14 +16,11 @@ import (
 
 const tokenExpiry = 10 * time.Minute
 
-// ---- Helpers ----
-
 func generateNamespace() string {
 	short := uuid.New().String()[:8]
 	return "nc_" + short
 }
 
-// human-friendly pairing token like "NC-A3X9K2" (no 0/O/1/I)
 func generatePairingToken() (string, error) {
 	const charset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	code := make([]byte, 6)
@@ -36,8 +34,6 @@ func generatePairingToken() (string, error) {
 	return "NC-" + string(code), nil
 }
 
-// ---- Handlers ----
-
 func LoginHandler(database *db.Database, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req LoginRequest
@@ -48,7 +44,6 @@ func LoginHandler(database *db.Database, jwtSecret string) gin.HandlerFunc {
 
 		user, err := database.GetUserByPhone(req.PhoneNumber)
 		if err != nil {
-			// New user — auto-create
 			namespace := generateNamespace()
 			user, err = database.CreateUser(req.PhoneNumber, namespace)
 			if err != nil {
@@ -147,7 +142,9 @@ func ConfirmHandler(database *db.Database, alog *auditLogger) gin.HandlerFunc {
 			return
 		}
 
-		alog.log(c, "pair/confirm", pt.MachineKey, "")
+		if err := alog.log(c, "pair/confirm", pt.MachineKey, ""); err != nil {
+			log.Printf("audit log write failed: %v", err)
+		}
 
 		c.JSON(http.StatusOK, gin.H{
 			"status":    "approved",

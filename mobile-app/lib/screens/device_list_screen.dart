@@ -5,6 +5,7 @@ import '../services/device_service.dart';
 import '../models/device.dart';
 import 'scanner_screen.dart';
 import 'terminal_screen.dart';
+import 'login_screen.dart';
 
 class NCDeviceListScreen extends StatefulWidget {
   final ApiService apiService;
@@ -84,7 +85,12 @@ class _NCDeviceListScreenState extends State<NCDeviceListScreen> {
   Future<void> _logout() async {
     await widget.authService.logout();
     if (!mounted) return;
-    Navigator.pushReplacementNamed(context, '/login');
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const NCLoginScreen(),
+      ),
+    );
   }
 
   @override

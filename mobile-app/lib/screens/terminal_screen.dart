@@ -25,6 +25,10 @@ class _NCTerminalScreenState extends State<NCTerminalScreen> {
   bool _connected = false;
   String? _error;
 
+  // TODO: prompt user for username/password or load from secure storage
+  static const String _sshUser = 'root';
+  static const String _sshPass = '';
+  // TODO: prompt user for username/password or load from secure storage
   static const String _sshUser = 'root';
   static const String _sshPass = '';
 
